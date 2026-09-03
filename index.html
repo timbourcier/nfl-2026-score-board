@@ -1487,7 +1487,9 @@ document.addEventListener('click',e=>{
   if(UI.tab==='pre'&&UI.sub.pre==='games')return patchPick(el.dataset.g,'pick');
   return render();}
  if(a==='wpick'){const wn=WEEK_OF[el.dataset.g];if(wn&&isWeekLocked(wn))return;
-  S.weekly[el.dataset.g]=t;save();return render();}
+  const gid=el.dataset.g;
+  if(!S.picks[gid]&&!isLocked())S.picks[gid]=t;   // first call on a game counts as the preseason call too
+  S.weekly[gid]=t;save();return render();}
  if(a==='actual'){
   if(t) S.actuals[el.dataset.g]=t; else delete S.actuals[el.dataset.g];
   save();return render();}

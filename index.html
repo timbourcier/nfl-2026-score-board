@@ -716,7 +716,7 @@ const KEY='eagles2026';
 function blank(){return{v:2,lastSync:0,locked:false,playoffResult:'',picks:{},bracketPicks:{},nudge:{},
  weekly:{},weeklyBracket:{},actuals:{},scores:{},actualBracketPicks:{},actualNudge:{},playerActuals:{},throughWeek:'',
  players:[
-  {id:'hurts',name:'Jalen Hurts',pos:'QB',stats:[{k:'td',label:'Total TDs',v:''},{k:'int',label:'Interceptions',v:''},{k:'rush',label:'Rushing yards',v:''}]},
+  {id:'hurts',name:'Jalen Hurts',pos:'QB',stats:[{k:'td',label:'Total TDs',v:''},{k:'int',label:'Interceptions',v:''},{k:'rush',label:'Rushing yards',v:''},{k:'passyd',label:'Passing yards',v:''}]},
   {id:'barkley',name:'Saquon Barkley',pos:'RB',stats:[{k:'rush',label:'Rushing yards',v:''},{k:'td',label:'Total TDs',v:''}]},
   {id:'smith',name:'DeVonta Smith',pos:'WR',stats:[{k:'recyd',label:'Receiving yards',v:''},{k:'rectd',label:'Receiving TDs',v:''}]},
   {id:'carter',name:'Jalen Carter',pos:'DT',stats:[{k:'sacks',label:'Sacks',v:''}]},
@@ -725,7 +725,11 @@ let S=blank(),storageOK=true;
 let UI={tab:'eagles',sub:{pre:'games',week:'reg',results:'games',eagles:'games'},conf:'NFC',team:null,week:1,fetching:false,msg:''};
 function load(){try{const raw=localStorage.getItem(KEY);
  if(raw){S=Object.assign(blank(),JSON.parse(raw));
-  if(!Array.isArray(S.players)||!S.players.length)S.players=blank().players;}
+  if(!Array.isArray(S.players)||!S.players.length)S.players=blank().players;
+  // one-time: add Hurts' passing yards stat to saves made before it existed
+  const hurts=S.players.find(p=>p.id==='hurts');
+  if(hurts&&!hurts.stats.some(st=>st.k==='passyd'))hurts.stats.push({k:'passyd',label:'Passing yards',v:''});
+ }
 }catch(e){storageOK=false;}}
 let saveT=null;
 function save(){clearTimeout(saveT);
@@ -915,25 +919,28 @@ const changed=only=>(only||ALL_GAMES).filter(g=>S.picks[g.id]&&S.weekly[g.id]&&S
 // A game reads as a scoreboard, not a form. Two team rows carry the colour,
 // the score and the result; tapping a row makes it your pick for the week.
 // Extra controls only appear when there is actually something to do.
-function gameCard(id,label,star,wlock){
+function gameCard(id,label,star,wlock,editPre){
  const g=GAME_BY_ID[id],sc=S.scores[id];
  const pre=S.picks[id],wk=S.weekly[id],ac=S.actuals[id];
  const started=(function(){const d=gameDate(id);return d&&Date.now()>=d.getTime();})();
  const live=sc&&sc.state==='in';
+ // Eagles tab edits the preseason call and is gated by the Sep 9 lock; Weekly
+ // tab edits this week's call and is gated by that week's Thursday lock.
+ const cur=editPre?pre:wk, act=editPre?'pick':'wpick', locked=editPre?isLocked():wlock;
 
  const teamRow=t=>{
   const score=sc?(t===g.away?sc.a:sc.h):null;
   const won=ac===t, lost=ac&&ac!==t;
   const marks=(pre===t?'<span class="tag">Pre</span>':'')+(wk===t?'<span class="tag wk">Wk</span>':'');
-  return '<'+(wlock?'div':'button')+' class="trow3'+(wk===t?' sel':'')+(won?' won':'')+(lost?' lost':'')+'"'
-   +' style="--c:'+col(t)+'"'+(wlock?'':' data-a="wpick" data-g="'+id+'" data-t="'+t+'"')+'>'
+  return '<'+(locked?'div':'button')+' class="trow3'+(cur===t?' sel':'')+(won?' won':'')+(lost?' lost':'')+'"'
+   +' style="--c:'+col(t)+'"'+(locked?'':' data-a="'+act+'" data-g="'+id+'" data-t="'+t+'"')+'>'
    +'<span class="tbar"></span>'
    +logo(t,28)
    +'<span class="tnm">'+nm(t)+'</span>'
    +'<span class="tags">'+marks+'</span>'
    +(score!==null&&score!==undefined?'<span class="tsc">'+score+'</span>':'')
    +(won?'<span class="tick">✓</span>':'')
-   +'</'+(wlock?'div':'button')+'>';
+   +'</'+(locked?'div':'button')+'>';
  };
 
  // Latest call decides the card's verdict stripe: this week's pick if there is
@@ -959,7 +966,7 @@ function gameCard(id,label,star,wlock){
  return '<div class="gcard'+(star?' mine':'')+verdict+'">'
   +'<div class="ghead"><span class="gdate">'+esc(label||'')+'</span>'
   +(live?'<span class="live">LIVE</span>':ac?'<span class="final">Final</span>':'')
-  +(wlock&&!ac?'<span class="final">Closed</span>':'')+'</div>'
+  +(locked&&!ac?'<span class="final">Closed</span>':'')+'</div>'
   +teamRow(g.away)+teamRow(g.home)+foot+'</div>';
 }
 
@@ -1426,7 +1433,7 @@ function tabEagles(){
   +'</div></div>';
  for(const g of EAGLES){
   if(g.bye){h+='<div class="byerow">Week '+g.week+' bye</div>';continue;}
-  h+=gameCard(g.id,'Wk '+g.week+' · '+g.date,false,isWeekLocked(g.week));
+  h+=gameCard(g.id,'Wk '+g.week+' · '+g.date,false,isLocked(),true);
  }
  return h;
 }
@@ -1487,9 +1494,7 @@ document.addEventListener('click',e=>{
   if(UI.tab==='pre'&&UI.sub.pre==='games')return patchPick(el.dataset.g,'pick');
   return render();}
  if(a==='wpick'){const wn=WEEK_OF[el.dataset.g];if(wn&&isWeekLocked(wn))return;
-  const gid=el.dataset.g;
-  if(!S.picks[gid]&&!isLocked())S.picks[gid]=t;   // first call on a game counts as the preseason call too
-  S.weekly[gid]=t;save();return render();}
+  S.weekly[el.dataset.g]=t;save();return render();}
  if(a==='actual'){
   if(t) S.actuals[el.dataset.g]=t; else delete S.actuals[el.dataset.g];
   save();return render();}
